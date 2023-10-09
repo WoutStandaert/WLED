@@ -683,6 +683,7 @@ ${i.opt&0x100?inforow("Debug","<button class=\"btn btn-xs\" onclick=\"requestJso
 ${inforow("Build",i.vid)}
 ${inforow("Signal strength",i.wifi.signal +"% ("+ i.wifi.rssi, " dBm)")}
 ${inforow("Uptime",getRuntimeStr(i.uptime))}
+${inforow("Time",i.time)}
 ${inforow("Free heap",heap," kB")}
 ${i.psram?inforow("Free PSRAM",(i.psram/1024).toFixed(1)," kB"):""}
 ${inforow("Estimated current",pwru)}
@@ -826,6 +827,7 @@ function populateSegments(s)
 	resetUtil(noNewSegs);
 	if (gId('selall')) gId('selall').checked = true;
 	for (var i = 0; i <= lSeg; i++) {
+		if (!gId(`seg${i}`)) continue;
 		updateLen(i);
 		updateTrail(gId(`seg${i}bri`));
 		gId(`segr${i}`).classList.add("hide");
@@ -833,7 +835,7 @@ function populateSegments(s)
 	}
 	if (segCount < 2) {
 		gId(`segd${lSeg}`).classList.add("hide");
-		gId(`segp0`).classList.add("hide");
+		if (parseInt(gId("seg0bri").value)==255) gId(`segp0`).classList.add("hide");
 	}
 	if (!isM && !noNewSegs && (cfg.comp.seglen?parseInt(gId(`seg${lSeg}s`).value):0)+parseInt(gId(`seg${lSeg}e`).value)<ledCount) gId(`segr${lSeg}`).classList.remove("hide");
 	gId('segutil2').style.display = (segCount > 1) ? "block":"none"; // rsbtn parent
@@ -1004,10 +1006,15 @@ function generateListItemHtml(listName, id, name, clickAction, extraHtml = '', e
 function btype(b)
 {
 	switch (b) {
+		case 2:
 		case 32: return "ESP32";
+		case 3:
 		case 33: return "ESP32-S2";
+		case 4:
 		case 34: return "ESP32-S3";
+		case 5:
 		case 35: return "ESP32-C3";
+		case 1:
 		case 82: return "ESP8266";
 	}
 	return "?";
@@ -1028,8 +1035,9 @@ function populateNodes(i,n)
 		n.nodes.sort((a,b) => (a.name).localeCompare(b.name));
 		for (var o of n.nodes) {
 			if (o.name) {
-				var url = `<button class="btn" title="${o.ip}" onclick="location.assign('http://${o.ip}');">${bname(o)}</button>`;
-				urows += inforow(url,`${btype(o.type)}<br><i>${o.vid==0?"N/A":o.vid}</i>`);
+				let onoff = `<i class="icons e-icon flr ${o.type&0x80?'':'off'}" onclick="rmtTgl('${o.ip}',this);"">&#xe08f;</i>`;
+				var url = `<button class="btn" title="${o.ip}" onclick="location.assign('http://${o.ip}');"><div class="bname">${bname(o)}</div>${o.vid<2307130?'':onoff}</button>`;
+				urows += inforow(url,`${btype(o.type&0x7F)}<br><i>${o.vid==0?"N/A":o.vid}</i>`);
 				nnodes++;
 			}
 		}
@@ -1240,7 +1248,7 @@ function updateSelectedPalette(s)
 	if (s > 1 && s < 6) {
 		cd[0].classList.remove('hide'); // * Color 1
 		if (s > 2) cd[1].classList.remove('hide'); // * Color 1 & 2
-		if (s == 5) cd[2].classList.remove('hide'); // all colors
+		if (s > 3) cd[2].classList.remove('hide'); // all colors
 	} else {
 		for (let i of cd) if (i.dataset.hide == '1') i.classList.add('hide');
 	}
@@ -2045,14 +2053,14 @@ function tglSegn(s)
 function selSegAll(o)
 {
 	var obj = {"seg":[]};
-	for (let i=0; i<=lSeg; i++) obj.seg.push({"id":i,"sel":o.checked});
+	for (let i=0; i<=lSeg; i++) if (gId(`seg${i}`)) obj.seg.push({"id":i,"sel":o.checked});
 	requestJson(obj);
 }
 
 function selSegEx(s)
 {
 	var obj = {"seg":[]};
-	for (let i=0; i<=lSeg; i++) obj.seg.push({"id":i,"sel":(i==s)});
+	for (let i=0; i<=lSeg; i++) if (gId(`seg${i}`)) obj.seg.push({"id":i,"sel":(i==s)});
 	obj.mainseg = s;
 	requestJson(obj);
 }
@@ -2070,7 +2078,7 @@ function selGrp(g)
 	event.stopPropagation();
 	var sel = gId(`segcont`).querySelectorAll(`div[data-set="${g}"]`);
 	var obj = {"seg":[]};
-	for (let i=0; i<=lSeg; i++) obj.seg.push({"id":i,"sel":false});
+	for (let i=0; i<=lSeg; i++) if (gId(`seg${i}`)) obj.seg.push({"id":i,"sel":false});
 	if (sel) for (let s of sel||[]) {
 		let i = parseInt(s.id.substring(3));
 		obj.seg[i] = {"id":i,"sel":true};
@@ -2569,6 +2577,24 @@ function setBalance(b)
 {
 	var obj = {"seg": {"cct": parseInt(b)}};
 	requestJson(obj);
+}
+
+function rmtTgl(ip,i) {
+	event.preventDefault();
+	event.stopPropagation();
+	fetch(`http://${ip}/win&T=2`, {method: 'get'})
+	.then((r)=>{
+		return r.text();
+	})
+	.then((t)=>{
+		let c = (new window.DOMParser()).parseFromString(t, "text/xml");
+		// perhaps just i.classList.toggle("off"); would be enough
+		if (c.getElementsByTagName('ac')[0].textContent === "0") {
+			i.classList.add("off");
+		} else {
+			i.classList.remove("off");
+		}
+	});
 }
 
 var hc = 0;
